@@ -121,6 +121,34 @@
             display: none;
         }
         
+        #countdown {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 20;
+            display: none;
+        }
+        
+        .countdown-number {
+            font-size: 8rem;
+            font-weight: bold;
+            color: #ffcc00;
+            text-shadow: 0 0 20px rgba(255, 204, 0, 0.7);
+            animation: pulse 1s ease-in-out;
+        }
+        
+        @keyframes pulse {
+            0% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.2); opacity: 0.7; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        
         .pipe-image, .bird-image, .gameover-image {
             display: none;
         }
@@ -179,6 +207,10 @@
                 font-size: 0.9rem;
                 margin-top: 15px;
             }
+            
+            .countdown-number {
+                font-size: 6rem;
+            }
         }
         
         @media (max-width: 360px) {
@@ -188,6 +220,10 @@
             
             .game-title {
                 font-size: 1.8rem;
+            }
+            
+            .countdown-number {
+                font-size: 5rem;
             }
         }
         
@@ -204,6 +240,10 @@
         <canvas id="game-canvas"></canvas>
         
         <div id="score-display">0</div>
+        
+        <div id="countdown">
+            <div class="countdown-number">3</div>
+        </div>
         
         <div id="start-screen">
             <h1 class="game-title">FlipBird</h1>
@@ -235,6 +275,12 @@
         <audio id="hit-sound">
             <source src="https://assets.mixkit.co/sfx/preview/mixkit-ominous-drums-227.mp3" type="audio/mp3">
         </audio>
+        <audio id="countdown-sound">
+            <source src="https://assets.mixkit.co/sfx/preview/mixkit-simple-countdown-922.mp3" type="audio/mp3">
+        </audio>
+        <audio id="go-sound">
+            <source src="https://assets.mixkit.co/sfx/preview/mixkit-race-start-countdown-919.mp3" type="audio/mp3">
+        </audio>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.all.min.js"></script>
@@ -244,6 +290,8 @@
         const ctx = canvas.getContext('2d');
         const startScreen = document.getElementById('start-screen');
         const scoreDisplay = document.getElementById('score-display');
+        const countdownElement = document.getElementById('countdown');
+        const countdownNumber = document.querySelector('.countdown-number');
         const startBtn = document.getElementById('start-btn');
         const muteBtn = document.getElementById('mute-btn');
         const loadingMessage = document.getElementById('loading-message');
@@ -266,6 +314,8 @@
         const flapSound = document.getElementById('flap-sound');
         const scoreSound = document.getElementById('score-sound');
         const hitSound = document.getElementById('hit-sound');
+        const countdownSound = document.getElementById('countdown-sound');
+        const goSound = document.getElementById('go-sound');
         
         // Game state
         let gameStarted = false;
@@ -276,6 +326,7 @@
         let animationId;
         let imagesLoaded = 4; // All images are embedded as base64
         let totalImages = 4;
+        let countdownActive = false;
         
         // Bird properties - Made bigger for mobile
         const bird = {
@@ -349,7 +400,7 @@
             },
             
             update: function() {
-                if (!gameStarted || gameOver) {
+                if (!gameStarted || gameOver || countdownActive) {
                     // Bird stays stable at initial position before game starts
                     this.y = canvas.height / 2 - this.height / 2;
                     this.velocity = 0;
@@ -382,8 +433,8 @@
             },
             
             flap: function() {
-                if (!gameStarted) {
-                    // Don't start the game on first tap - wait for Start Game button
+                if (!gameStarted || countdownActive) {
+                    // Don't flap during countdown
                     return;
                 }
                 
@@ -460,7 +511,7 @@
             },
             
             update: function() {
-                if (!gameStarted || gameOver) return;
+                if (!gameStarted || gameOver || countdownActive) return;
                 
                 if (frames % 140 === 0) { // Reduced frequency for slower gameplay
                     this.position.push({
@@ -600,8 +651,66 @@
             }
         }
         
+        function startCountdown() {
+            countdownActive = true;
+            countdownElement.style.display = 'flex';
+            let count = 3;
+            
+            // Play countdown sound
+            if (!isMuted) {
+                countdownSound.currentTime = 0;
+                countdownSound.play().catch(e => console.log("Audio play failed:", e));
+            }
+            
+            // Update countdown number
+            countdownNumber.textContent = count;
+            
+            const countdownInterval = setInterval(() => {
+                count--;
+                
+                if (count > 0) {
+                    countdownNumber.textContent = count;
+                    
+                    // Play countdown sound for each number
+                    if (!isMuted) {
+                        countdownSound.currentTime = 0;
+                        countdownSound.play().catch(e => console.log("Audio play failed:", e));
+                    }
+                } else {
+                    countdownNumber.textContent = "GO!";
+                    
+                    // Play "GO" sound
+                    if (!isMuted) {
+                        goSound.currentTime = 0;
+                        goSound.play().catch(e => console.log("Audio play failed:", e));
+                    }
+                    
+                    setTimeout(() => {
+                        clearInterval(countdownInterval);
+                        countdownElement.style.display = 'none';
+                        countdownActive = false;
+                        
+                        // Start the game
+                        gameStarted = true;
+                        bird.isFloating = false; // Stop floating animation when game starts
+                        
+                        if (!isMuted) {
+                            bgMusic.currentTime = 0;
+                            bgMusic.play().catch(e => console.log("Audio play failed:", e));
+                        }
+                        
+                        // Start the game loop
+                        if (animationId) {
+                            cancelAnimationFrame(animationId);
+                        }
+                        gameLoop();
+                    }, 1000);
+                }
+            }, 1000);
+        }
+        
         function startGame() {
-            gameStarted = true;
+            gameStarted = false;
             gameOver = false;
             score = 0;
             frames = 0;
@@ -609,22 +718,18 @@
             scoreDisplay.style.display = 'block';
             
             bird.reset();
-            bird.isFloating = false; // Stop floating animation when game starts
             pipes.reset();
             
             startScreen.style.display = 'none';
             
+            // Stop game over music and start countdown
             if (!isMuted) {
-                bgMusic.currentTime = 0;
-                bgMusic.play().catch(e => console.log("Audio play failed:", e));
                 gameoverMusic.pause();
+                gameoverMusic.currentTime = 0;
             }
             
-            // Start the game loop
-            if (animationId) {
-                cancelAnimationFrame(animationId);
-            }
-            gameLoop();
+            // Start countdown
+            startCountdown();
         }
         
         function resetGame() {
@@ -670,7 +775,11 @@
                 allowEscapeKey: false
             }).then((result) => {
                 if (result.isConfirmed) {
-                    // Retry game
+                    // Retry game - immediately stop game over music
+                    if (!isMuted) {
+                        gameoverMusic.pause();
+                        gameoverMusic.currentTime = 0;
+                    }
                     resetGame();
                 } else {
                     // Go to menu
@@ -690,6 +799,7 @@
             if (!isMuted) {
                 bgMusic.pause();
                 gameoverMusic.pause();
+                gameoverMusic.currentTime = 0;
             }
             
             if (animationId) {
